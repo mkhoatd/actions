@@ -1,0 +1,29 @@
+name: npm-audit
+
+on:
+  workflow_call:
+    inputs:
+      level:
+        description: audit level
+        default: critical
+        required: false
+        type: string
+
+jobs:
+  npm-audit:
+    timeout-minutes: 5
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: ahmadnassri/action-dotenv@v1.0.4
+
+      - uses: actions/setup-node@v4.2.0
+        with:
+          node-version: latest
+
+      - run: npm audit
+        env:
+          NPM_CONFIG_AUDIT_LEVEL: ${{ env.NPM_CONFIG_AUDIT_LEVEL || inputs.level }}

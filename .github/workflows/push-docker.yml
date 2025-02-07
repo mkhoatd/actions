@@ -1,0 +1,68 @@
+name: push-docker
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN_1PASSWORD:
+        description: 1Password service account token
+        required: true
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+
+jobs:
+  metadata:
+    uses: ./.github/workflows/job-metadata.yml
+
+  lint-commits:
+    uses: ./.github/workflows/job-lint-commits.yml
+
+  lint-content:
+    uses: ./.github/workflows/job-lint-all.yml
+
+    permissions:
+      contents: write
+      statuses: write
+      pull-requests: write
+
+  release:
+    needs:
+      - metadata
+      - lint-commits
+      - lint-content
+
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+
+    if: ${{ needs.metadata.outputs.repository_default_branch == github.ref_name }}
+
+    uses: ./.github/workflows/job-semantic-release.yml
+
+  publish-config:
+    uses: ./.github/workflows/job-parse-json.yml
+    with:
+      file: .github/docker-config.json
+
+  publish-docker:
+    needs:
+      - release
+      - metadata
+      - publish-config
+
+    if: ${{ needs.release.outputs.published == 'true' }}
+
+    permissions:
+      contents: write
+      packages: write
+
+    uses: ./.github/workflows/job-docker-build-push.yml
+    with:
+      name: ${{ fromJson(needs.publish-config.outputs.json).name || needs.metadata.outputs.repository_name }}
+      license: ${{ needs.metadata.outputs.license_spdx_id }}
+      version: ${{ needs.release.outputs.release-git-tag }}
+      platforms: ${{ fromJson(needs.publish-config.outputs.json).platforms }}
+      registries: ${{ toJSON(fromJson(needs.publish-config.outputs.json).registries) }}
+    secrets:
+      TOKEN_1PASSWORD: ${{ secrets.TOKEN_1PASSWORD }}
