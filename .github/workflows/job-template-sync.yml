@@ -1,0 +1,31 @@
+name: template-sync
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN_1PASSWORD:
+        description: 1Password service account token
+        required: true
+
+jobs:
+  template-sync:
+    timeout-minutes: 5
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: 1password/load-secrets-action@v2
+        id: secrets
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.TOKEN_1PASSWORD }}
+          TOKEN_GITHUB: op://Tokens/GitHub/accounts/${{ github.repository_owner }}
+
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - uses: mkhoatd/action-template-repository-sync@v2.6.6
+        with:
+          github-token: ${{ steps.secrets.outputs.TOKEN_GITHUB }}

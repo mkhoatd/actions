@@ -1,0 +1,17 @@
+name: pull-request-target
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN_1PASSWORD:
+        description: 1Password service account token
+        required: true
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+
+jobs:
+  auto-merge:
+    uses: ./.github/workflows/job-auto-merge.yml
+    secrets:
+      TOKEN_1PASSWORD: ${{ secrets.TOKEN_1PASSWORD }}

@@ -1,0 +1,69 @@
+name: job-terraform-plan
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN_1PASSWORD:
+        description: 1Password service account token
+        required: true
+
+      TOKEN_ROTATION:
+        description: Rotation Key
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform-plan:
+    timeout-minutes: 30
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: 1password/load-secrets-action@v2
+        id: secrets
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.TOKEN_1PASSWORD }}
+          TOKEN_GITHUB: op://Tokens/GitHub/accounts/${{ github.repository_owner }}
+          TOKEN_CLOUDFLARE: op://Tokens/Cloudflare/accounts/${{ github.repository_owner }}
+          TOKEN_TERRAFORM: op://Tokens/Terraform/accounts/${{ github.repository_owner }}
+
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_wrapper: false
+          cli_config_credentials_token: ${{ steps.secrets.outputs.TOKEN_TERRAFORM }}
+
+      - uses: actions/cache@v4.2.0
+        with:
+          key: terraform-cache-${{ hashFiles('.terraform.lock.hcl') }}
+          path: .terraform
+
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform fmt -check
+      - run: terraform plan -lock=false -out terraform.plan
+        env:
+          GITHUB_TOKEN: ${{ steps.secrets.outputs.TOKEN_GITHUB }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.TOKEN_CLOUDFLARE }}
+
+          TF_VAR_TOKEN_1PASSWORD: ${{ secrets.TOKEN_1PASSWORD }}
+          TF_VAR_TOKEN_ROTATION: ${{ secrets.TOKEN_ROTATION }}
+
+      # generate plain output
+      - run: terraform show -no-color terraform.plan > terraform.text
+
+      # generate json output
+      - run: terraform show -json terraform.plan > terraform.json
+
+      - uses: mkhoatd/action-terraform-report@v4
+        with:
+          # tell the action the plan outputs
+          terraform-text: ${{ github.workspace }}/terraform.text
+          terraform-json: ${{ github.workspace }}/terraform.json
+          remove-stale-reports: true

@@ -1,0 +1,65 @@
+name: job-terraform-apply
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN_1PASSWORD:
+        description: 1Password service account token
+        required: true
+
+      TOKEN_ROTATION:
+        description: Rotation Key
+        required: false
+
+jobs:
+  terraform-apply:
+    timeout-minutes: 30
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: 1password/load-secrets-action@v2
+        id: secrets
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.TOKEN_1PASSWORD }}
+          TOKEN_GITHUB: op://Tokens/GitHub/accounts/${{ github.repository_owner }}
+          TOKEN_CLOUDFLARE: op://Tokens/Cloudflare/accounts/${{ github.repository_owner }}
+          TOKEN_TERRAFORM: op://Tokens/Terraform/accounts/${{ github.repository_owner }}
+
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          cli_config_credentials_token: ${{ steps.secrets.outputs.TOKEN_TERRAFORM }}
+
+      # cache terraform plugins
+      - uses: actions/cache@v4.2.0
+        id: terraform-cache
+        with:
+          key: terraform-cache-${{ hashFiles('.terraform.lock.hcl') }}
+          path: .terraform
+
+      # install plugins
+      - run: terraform init
+
+      - id: terraform-cloud
+        uses: mkhoatd/action-terraform-cloud-api@v1.1.3
+        with:
+          token: ${{ steps.secrets.outputs.TOKEN_TERRAFORM }}
+
+      - if: ${{ steps.terraform-cloud.outputs.workspace_locked == 'true' }}
+        run: |
+          echo "::error::workspace is locked"
+          exit 1
+
+      # execute plan
+      - run: terraform apply -auto-approve
+        if: ${{ steps.terraform-cloud.outputs.workspace_locked == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ steps.secrets.outputs.TOKEN_GITHUB }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.TOKEN_CLOUDFLARE }}
+
+          TF_VAR_TOKEN_1PASSWORD: ${{ secrets.TOKEN_1PASSWORD }}
+          TF_VAR_TOKEN_ROTATION: ${{ secrets.TOKEN_ROTATION }}
